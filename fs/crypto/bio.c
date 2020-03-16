@@ -63,6 +63,14 @@ static void completion_pages(struct work_struct *work)
 	bio_put(bio);
 }
 
+void fscrypt_decrypt_bio_pages(struct fscrypt_ctx *ctx, struct bio *bio)
+{
+	INIT_WORK(&ctx->r.work, completion_pages);
+	ctx->r.bio = bio;
+	queue_work(fscrypt_read_workqueue, &ctx->r.work);
+}
+EXPORT_SYMBOL(fscrypt_decrypt_bio_pages);
+
 void fscrypt_enqueue_decrypt_bio(struct fscrypt_ctx *ctx, struct bio *bio)
 {
 	INIT_WORK(&ctx->r.work, completion_pages);

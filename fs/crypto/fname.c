@@ -195,6 +195,19 @@ bool fscrypt_fname_encrypted_size(const struct inode *inode, u32 orig_len,
 	return true;
 }
 
+//don't do this either
+u32 fscrypt_fname_encrypted_size_legacy(const struct inode *inode, u32 ilen)
+{
+	int padding = 32;
+	struct fscrypt_info *ci = inode->i_crypt_info;
+
+	if (ci)
+		padding = 4 << (ci->ci_flags & FS_POLICY_FLAGS_PAD_MASK);
+	ilen = max(ilen, (u32)FS_CRYPTO_BLOCK_SIZE);
+	return round_up(ilen, padding);
+}
+EXPORT_SYMBOL(fscrypt_fname_encrypted_size_legacy);
+
 /**
  * fscrypt_fname_alloc_buffer - allocate a buffer for presented filenames
  *
@@ -290,6 +303,35 @@ int fscrypt_fname_disk_to_usr(struct inode *inode,
 	return 0;
 }
 EXPORT_SYMBOL(fscrypt_fname_disk_to_usr);
+
+/**
+ * fscrypt_fname_usr_to_disk() - converts a filename from user space to disk
+ * space
+ *
+ * The caller must have allocated sufficient memory for the @oname string.
+ *
+ * Return: 0 on success, -errno on failure
+ */
+int fscrypt_fname_usr_to_disk(struct inode *inode,
+			const struct qstr *iname,
+			struct fscrypt_str *oname)
+{
+	if (fscrypt_is_dot_dotdot(iname)) {
+		oname->name[0] = '.';
+		oname->name[iname->len - 1] = '.';
+		oname->len = iname->len;
+		return 0;
+	}
+	if (inode->i_crypt_info)
+		return fname_encrypt(inode, iname, oname, iname->len); //is this even right?
+	/*
+	 * Without a proper key, a user is not allowed to modify the filenames
+	 * in a directory. Consequently, a user space name cannot be mapped to
+	 * a disk-space name
+	 */
+	return -ENOKEY;
+}
+EXPORT_SYMBOL(fscrypt_fname_usr_to_disk);
 
 /**
  * fscrypt_setup_filename() - prepare to search a possibly encrypted directory
