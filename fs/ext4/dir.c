@@ -81,10 +81,6 @@ int __ext4_check_dir_entry(const char *function, unsigned int line,
 	else
 		return 0;
 
-	/* for debugging, sangwoo2.lee */
-	print_bh(dir->i_sb, bh, 0, EXT4_BLOCK_SIZE(dir->i_sb));
-	/* for debugging */
-
 	if (filp)
 		ext4_error_file(filp, function, line, bh->b_blocknr,
 				"bad entry in directory: %s - offset=%u(%u), "
@@ -114,12 +110,6 @@ static int ext4_readdir(struct file *file, struct dir_context *ctx)
 	struct buffer_head *bh = NULL;
 	int dir_has_error = 0;
 	struct ext4_str fname_crypto_str = {.name = NULL, .len = 0};
-
-	if (ext4_encrypted_inode(inode)) {
-		err = ext4_get_encryption_info(inode);
-		if (err && err != -ENOKEY)
-			return err;
-	}
 
 	if (is_dx_dir(inode)) {
 		err = ext4_dx_readdir(file, ctx);
@@ -604,13 +594,8 @@ finished:
 
 static int ext4_dir_open(struct inode * inode, struct file * filp)
 {
-	if (ext4_encrypted_inode(inode)) {
-		int ret = ext4_get_encryption_info(inode);
-		if (ret) {
-			printk(KERN_ERR "%s: failed to get encryption info (%d)", __func__, ret);
-			return -EACCES;
-		}
-	}
+	if (ext4_encrypted_inode(inode))
+		return ext4_get_encryption_info(inode) ? -EACCES : 0;
 	return 0;
 }
 

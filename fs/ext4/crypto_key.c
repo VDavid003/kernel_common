@@ -14,14 +14,8 @@
 #include <linux/scatterlist.h>
 #include <uapi/linux/keyctl.h>
 
-#include <crypto/fmp.h>
-
 #include "ext4.h"
 #include "xattr.h"
-
-#ifdef CONFIG_EXT4CRYPT_SDP
-#include "sdp/fscrypto_sdp_dek_private.h"
-#endif
 
 static void derive_crypt_complete(struct crypto_async_request *req, int rc)
 {
@@ -178,14 +172,8 @@ void ext4_free_crypt_info(struct ext4_crypt_info *ci)
 {
 	if (!ci)
 		return;
-#ifdef CONFIG_EXT4CRYPT_SDP
-	fscrypt_sdp_put_sdp_info(ci->ci_sdp_info);
-#endif
 
-//	if (ci->ci_keyring_key)
-//		key_put(ci->ci_keyring_key);
-	if (!ci->private_enc_mode)
-		crypto_free_ablkcipher(ci->ci_ctfm);
+	crypto_free_ablkcipher(ci->ci_ctfm);
 	kmem_cache_free(ext4_crypt_info_cachep, ci);
 }
 
@@ -203,9 +191,6 @@ void ext4_free_encryption_info(struct inode *inode,
 	if (prev != ci)
 		return;
 
-#ifdef CONFIG_EXT4CRYPT_SDP
-	fscrypt_sdp_cache_remove_inode_num(inode);
-#endif
 	ext4_free_crypt_info(ci);
 }
 
@@ -229,9 +214,11 @@ int ext4_get_encryption_info(struct inode *inode)
 	if (ei->i_crypt_info)
 		return 0;
 
-	res = ext4_init_crypto();
-	if (res)
-		return res;
+	if (!ext4_read_workqueue) {
+		res = ext4_init_crypto();
+		if (res)
+			return res;
+	}
 
 	res = ext4_xattr_get(inode, EXT4_XATTR_INDEX_ENCRYPTION,
 				 EXT4_XATTR_NAME_ENCRYPTION_CONTEXT,
@@ -254,22 +241,9 @@ int ext4_get_encryption_info(struct inode *inode)
 	crypt_info->ci_flags = ctx.flags;
 	crypt_info->ci_data_mode = ctx.contents_encryption_mode;
 	crypt_info->ci_filename_mode = ctx.filenames_encryption_mode;
-#ifdef CONFIG_EXT4_PRIVATE_ENCRYPTION
-	if (ctx.filenames_encryption_mode == EXT4_PRIVATE_ENCRYPTION_MODE_AES_256_XTS ||
-			ctx.filenames_encryption_mode == EXT4_PRIVATE_ENCRYPTION_MODE_AES_256_CBC ||
-			ctx.filenames_encryption_mode == EXT4_ENCRYPTION_MODE_PRIVATE) {
-		printk(KERN_WARNING "Private encryption doesn't support filename encryption mode. \
-				Forcely, change it to AES_256_CTS mode\n");
-		ctx.filenames_encryption_mode = EXT4_ENCRYPTION_MODE_AES_256_CTS;
-	}
-#endif /* CONFIG_EXT4_PRIVATE_ENCRYPTION */
 	crypt_info->ci_ctfm = NULL;
 	memcpy(crypt_info->ci_master_key, ctx.master_key_descriptor,
 	       sizeof(crypt_info->ci_master_key));
-#ifdef CONFIG_EXT4CRYPT_SDP
-	crypt_info->ci_sdp_info = NULL;
-#endif
-
 	if (S_ISREG(inode->i_mode))
 		mode = crypt_info->ci_data_mode;
 	else if (S_ISDIR(inode->i_mode) || S_ISLNK(inode->i_mode))
@@ -283,17 +257,6 @@ int ext4_get_encryption_info(struct inode *inode)
 	case EXT4_ENCRYPTION_MODE_AES_256_CTS:
 		cipher_str = "cts(cbc(aes))";
 		break;
-#ifdef CONFIG_EXT4_PRIVATE_ENCRYPTION
-	case EXT4_PRIVATE_ENCRYPTION_MODE_AES_256_XTS:
-		cipher_str = "xts(aes)";
-		break;
-	case EXT4_PRIVATE_ENCRYPTION_MODE_AES_256_CBC:
-		cipher_str = "cbc(aes)";
-		break;
-	case EXT4_ENCRYPTION_MODE_PRIVATE:
-		cipher_str = "xts(aes)";
-		break;
-#endif /* CONFIG_EXT4_PRIVATE_ENCRYPTION */
 	case EXT4_ENCRYPTION_MODE_AES_256_HEH:
 		cipher_str = "heh(aes)";
 		break;
@@ -329,12 +292,6 @@ int ext4_get_encryption_info(struct inode *inode)
 	}
 	down_read(&keyring_key->sem);
 	ukp = user_key_payload(keyring_key);
-	if (!ukp) {
-		/* key was revoked before we acquired its semaphore */
-		res = -EKEYREVOKED;
-		up_read(&keyring_key->sem);
-		goto out;
-	}
 	if (ukp->datalen != sizeof(struct ext4_encryption_key)) {
 		res = -EINVAL;
 		up_read(&keyring_key->sem);
@@ -351,70 +308,30 @@ int ext4_get_encryption_info(struct inode *inode)
 		up_read(&keyring_key->sem);
 		goto out;
 	}
-#ifdef CONFIG_EXT4CRYPT_SDP
-	if ((FSCRYPT_SDP_PARSE_FLAG_SDP_ONLY(ctx.knox_flags) & FSCRYPT_KNOX_FLG_SDP_MASK)) {
-		crypt_info->ci_sdp_info = fscrypt_sdp_alloc_sdp_info();
-		if (!crypt_info->ci_sdp_info) {
-			res = -ENOMEM;
-			goto out;
-		}
-		crypt_info->ci_sdp_info->sdp_flags = FSCRYPT_SDP_PARSE_FLAG_SDP_ONLY(ctx.knox_flags);
-
-		res = fscrypt_sdp_get_key_if_sensitive(inode, crypt_info, ctx.nonce);
-		if (res)
-			goto out;
-	}
-#endif
 	res = ext4_derive_key(&ctx, master_key->raw, raw_key);
 	up_read(&keyring_key->sem);
 	if (res)
 		goto out;
 got_key:
-	memset(crypt_info->raw_key, 0, EXT4_MAX_KEY_SIZE);
-
-#ifdef CONFIG_EXT4_PRIVATE_ENCRYPTION
-	/* hack to support fbe on gsi */
-	if (S_ISREG(inode->i_mode) && (crypt_info->ci_data_mode == EXT4_ENCRYPTION_MODE_AES_256_XTS))
-		goto private_crypt;
-#endif
-
-	if (mode == EXT4_PRIVATE_ENCRYPTION_MODE_AES_256_XTS ||
-			mode == EXT4_PRIVATE_ENCRYPTION_MODE_AES_256_CBC ||
-			mode == EXT4_ENCRYPTION_MODE_PRIVATE) {
-#ifdef CONFIG_EXT4_PRIVATE_ENCRYPTION
-private_crypt:
-#endif
-		crypt_info->private_enc_mode = EXYNOS_FMP_FILE_ENC;
-		memcpy(crypt_info->raw_key, raw_key, ext4_encryption_key_size(mode));
-		memcpy(inode->i_mapping->key, crypt_info->raw_key, ext4_encryption_key_size(mode));
-		inode->i_mapping->key_length = ext4_encryption_key_size(mode);
-	} else {
-		crypt_info->private_enc_mode = 0;
-		inode->i_mapping->private_algo_mode = EXYNOS_FMP_BYPASS_MODE;
-		ctfm = crypto_alloc_ablkcipher(cipher_str, 0, 0);
-		if (!ctfm || IS_ERR(ctfm)) {
-			res = ctfm ? PTR_ERR(ctfm) : -ENOMEM;
-			printk(KERN_DEBUG
-			       "%s: error %d (inode %u) allocating crypto tfm\n",
-			       __func__, res, (unsigned) inode->i_ino);
-			goto out;
-		}
-		crypt_info->ci_ctfm = ctfm;
-		crypto_ablkcipher_clear_flags(ctfm, ~0);
-		crypto_tfm_set_flags(crypto_ablkcipher_tfm(ctfm),
-				     CRYPTO_TFM_REQ_WEAK_KEY);
-		res = crypto_ablkcipher_setkey(ctfm, raw_key,
-					       ext4_encryption_key_size(mode));
-		if (res)
-			goto out;
+	ctfm = crypto_alloc_ablkcipher(cipher_str, 0, 0);
+	if (!ctfm || IS_ERR(ctfm)) {
+		res = ctfm ? PTR_ERR(ctfm) : -ENOMEM;
+		printk(KERN_DEBUG
+		       "%s: error %d (inode %u) allocating crypto tfm\n",
+		       __func__, res, (unsigned) inode->i_ino);
+		goto out;
 	}
-	inode->i_mapping->private_enc_mode = crypt_info->private_enc_mode;
+	crypt_info->ci_ctfm = ctfm;
+	crypto_ablkcipher_clear_flags(ctfm, ~0);
+	crypto_tfm_set_flags(crypto_ablkcipher_tfm(ctfm),
+			     CRYPTO_TFM_REQ_WEAK_KEY);
+	res = crypto_ablkcipher_setkey(ctfm, raw_key,
+				       ext4_encryption_key_size(mode));
+	if (res)
+		goto out;
+
 	if (cmpxchg(&ei->i_crypt_info, NULL, crypt_info) == NULL)
 		crypt_info = NULL;
-#ifdef CONFIG_EXT4CRYPT_SDP
-	if (crypt_info == NULL) //Call only when i_crypt_info is loaded initially
-		fscrypt_sdp_finalize_tasks(inode);
-#endif
 out:
 	if (res == -ENOKEY)
 		res = 0;
