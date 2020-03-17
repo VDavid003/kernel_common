@@ -318,7 +318,7 @@ static void migrate_read_lock(struct zspage *zspage);
 static void migrate_read_unlock(struct zspage *zspage);
 static void kick_deferred_free(struct zs_pool *pool);
 static void init_deferred_free(struct zs_pool *pool);
-static void SetZsPageMovable(struct zs_pool *pool, struct zspage *zspage);
+//static void SetZsPageMovable(struct zs_pool *pool, struct zspage *zspage);
 #else
 static int zsmalloc_mount(void) { return 0; }
 static void zsmalloc_unmount(void) {}
@@ -329,7 +329,7 @@ static void migrate_read_lock(struct zspage *zspage) {}
 static void migrate_read_unlock(struct zspage *zspage) {}
 static void kick_deferred_free(struct zs_pool *pool) {}
 static void init_deferred_free(struct zs_pool *pool) {}
-static void SetZsPageMovable(struct zs_pool *pool, struct zspage *zspage) {}
+//static void SetZsPageMovable(struct zs_pool *pool, struct zspage *zspage) {}
 #endif
 
 static int create_cache(struct zs_pool *pool)
@@ -950,7 +950,7 @@ static void unpin_tag(unsigned long handle)
 
 static void reset_page(struct page *page)
 {
-	__ClearPageMovable(page);
+	//__ClearPageMovable(page);
 	clear_bit(PG_private, &page->flags);
 	clear_bit(PG_private_2, &page->flags);
 	set_page_private(page, 0);
@@ -1606,7 +1606,7 @@ unsigned long zs_malloc(struct zs_pool *pool, size_t size)
 			class->size, class->pages_per_zspage));
 
 	/* We completely set up zspage so mark them as movable */
-	SetZsPageMovable(pool, zspage);
+	//SetZsPageMovable(pool, zspage);
 	spin_unlock(&class->lock);
 
 	return handle;
@@ -1973,7 +1973,7 @@ static void replace_sub_page(struct size_class *class, struct zspage *zspage,
 	set_first_obj_offset(newpage, get_first_obj_offset(oldpage));
 	if (unlikely(PageHugeObject(oldpage)))
 		newpage->index = oldpage->index;
-	__SetPageMovable(newpage, page_mapping(oldpage));
+	//__SetPageMovable(newpage, page_mapping(oldpage));
 }
 
 bool zs_page_isolate(struct page *page, isolate_mode_t mode)
@@ -2247,7 +2247,7 @@ static void init_deferred_free(struct zs_pool *pool)
 	INIT_WORK(&pool->free_work, async_free_zspage);
 }
 
-static void SetZsPageMovable(struct zs_pool *pool, struct zspage *zspage)
+/*static void SetZsPageMovable(struct zs_pool *pool, struct zspage *zspage)
 {
 	struct page *page = get_first_page(zspage);
 
@@ -2256,7 +2256,7 @@ static void SetZsPageMovable(struct zs_pool *pool, struct zspage *zspage)
 		__SetPageMovable(page, pool->inode->i_mapping);
 		unlock_page(page);
 	} while ((page = get_next_page(page)) != NULL);
-}
+}*/
 #endif
 
 /*
