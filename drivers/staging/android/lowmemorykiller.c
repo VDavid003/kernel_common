@@ -319,8 +319,8 @@ static unsigned long lowmem_scan(struct shrinker *s, struct shrink_control *sc)
 		lowmem_deathpending_timeout = jiffies + HZ;
 		rem += selected_tasksize;
 		lowmem_lmkcount++;
-		if ((selected_oom_score_adj <= 100) && (__ratelimit(&lmk_rs)))
-			dump_tasks(NULL, NULL);
+		//if ((selected_oom_score_adj <= 100) && (__ratelimit(&lmk_rs)))
+		//	dump_tasks(NULL, NULL);
 	}
 
 	lowmem_print(4, "lowmem_scan %lu, %x, return %lu\n",

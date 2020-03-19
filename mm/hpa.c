@@ -189,7 +189,7 @@ static int alloc_freepages_range(struct zone *zone, unsigned int order,
 				list_del(&page->lru);
 				__ClearPageBuddy(page);
 				set_page_private(page, 0);
-				set_pcppage_migratetype(page, mt);
+				page->index = mt;
 				area->nr_free--;
 				current_size = PAGE_SIZE << current_order;
 				__mod_zone_page_state(zone, NR_FREE_PAGES,
@@ -273,7 +273,7 @@ retry:
 		if (!is_movable_chunk(pfn, order))
 			continue;
 
-		ret = alloc_contig_range_fast(pfn, pfn + nr_pages,
+		ret = alloc_contig_range(pfn, pfn + nr_pages,
 				get_pageblock_migratetype(pfn_to_page(pfn)));
 		if (ret == 0)
 			prep_highorder_pages(pfn, order);

@@ -330,24 +330,6 @@ struct inode;
 #define set_page_private(page, v)	((page)->private = (v))
 
 /*
- * A cached value of the page's pageblock's migratetype, used when the page is
- * put on a pcplist. Used to avoid the pageblock migratetype lookup when
- * freeing from pcplists in most cases, at the cost of possibly becoming stale.
- * Also the migratetype set in the page does not necessarily match the pcplist
- * index, e.g. page might have MIGRATE_CMA set but be on a pcplist with any
- * other index - this ensures that it will be put on the correct CMA freelist.
- */
-static inline int get_pcppage_migratetype(struct page *page)
-{
-	return page->index;
-}
-
-static inline void set_pcppage_migratetype(struct page *page, int migratetype)
-{
-	page->index = migratetype;
-}
-
-/*
  * FIXME: take this include out, include page-flags.h in
  * files which need it (119 of them)
  */
@@ -2361,12 +2343,12 @@ enum memsize_kernel_type {
 	MEMSIZE_KERNEL_OTHERS,
 	MEMSIZE_KERNEL_STOP,
 };
-extern void set_memsize_reserved_name(const char *name);
-extern void unset_memsize_reserved_name(void);
-extern void set_memsize_kernel_type(enum memsize_kernel_type type);
-extern void free_memsize_reserved(phys_addr_t free_base, phys_addr_t free_size);
-extern void record_memsize_reserved(const char *name, phys_addr_t base,
+static inline void set_memsize_reserved_name(const char *name) {};
+static inline void unset_memsize_reserved_name(void) {};
+static inline void set_memsize_kernel_type(enum memsize_kernel_type type) {};
+static inline void free_memsize_reserved(phys_addr_t free_base, phys_addr_t free_size) {};
+static inline void record_memsize_reserved(const char *name, phys_addr_t base,
 				    phys_addr_t size, bool nomap,
-				    bool reusable);
+				    bool reusable) {};
 #endif /* __KERNEL__ */
 #endif /* _LINUX_MM_H */
