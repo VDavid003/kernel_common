@@ -23,19 +23,6 @@
 #include "acl.h"
 #include <trace/events/f2fs.h>
 
-//don't do this
-#include "fscrypt_private.h"
-
-static inline void fscrypt_set_d_op(struct dentry *dentry)
-{
-		return;
-}
-
-static inline void fscrypt_set_encrypted_dentry(struct dentry *dentry)
-{
-		return;
-}
-
 static struct inode *f2fs_new_inode(struct inode *dir, umode_t mode)
 {
 	struct f2fs_sb_info *sbi = F2FS_I_SB(dir);
@@ -521,7 +508,7 @@ static int f2fs_symlink(struct inode *dir, struct dentry *dentry,
 		if (!fscrypt_has_encryption_key(dir))
 			return -ENOKEY;
 
-		disk_link.len = (fscrypt_fname_encrypted_size_legacy(dir, len) +
+		disk_link.len = (fscrypt_fname_encrypted_size(dir, len) +
 				sizeof(struct fscrypt_symlink_data));
 	}
 

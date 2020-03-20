@@ -23,11 +23,13 @@
 #include <linux/bio.h>
 #include <linux/blkdev.h>
 #include <linux/quotaops.h>
+#ifdef CONFIG_F2FS_FS_ENCRYPTION
+#include <linux/fscrypt_supp.h>
+#else
+#include <linux/fscrypt_notsupp.h>
+#endif
 #include <crypto/hash.h>
 #include <linux/writeback.h>
-
-#define __FS_HAS_ENCRYPTION IS_ENABLED(CONFIG_F2FS_FS_ENCRYPTION)
-#include <linux/fscrypt.h>
 
 #ifdef CONFIG_F2FS_CHECK_FS
 #define f2fs_bug_on(sbi, condition)	BUG_ON(condition)
@@ -788,7 +790,7 @@ struct f2fs_nm_info {
 	unsigned int nid_cnt[MAX_NID_STATE];	/* the number of free node id */
 	spinlock_t nid_list_lock;	/* protect nid lists ops */
 	struct mutex build_lock;	/* lock for build free nids */
-	unsigned char **free_nid_bitmap;
+	unsigned char (*free_nid_bitmap)[NAT_ENTRY_BITMAP_SIZE];
 	unsigned char *nat_block_bitmap;
 	unsigned short *free_nid_count;	/* free nid count of NAT block */
 
