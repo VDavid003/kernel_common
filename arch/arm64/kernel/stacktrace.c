@@ -44,9 +44,6 @@ int notrace unwind_frame(struct task_struct *tsk, struct stackframe *frame)
 	unsigned long fp = frame->fp;
 	unsigned long irq_stack_ptr;
 
-	if (!tsk)
-		tsk = current;
-
 	/*
 	 * Switching between stacks is valid when tracing current and in
 	 * non-preemptible context.
@@ -71,7 +68,7 @@ int notrace unwind_frame(struct task_struct *tsk, struct stackframe *frame)
 	frame->pc = *(unsigned long *)(fp + 8);
 
 #ifdef CONFIG_FUNCTION_GRAPH_TRACER
-	if (tsk->ret_stack &&
+	if (tsk && tsk->ret_stack &&
 			(frame->pc == (unsigned long)return_to_handler)) {
 		/*
 		 * This is a case where function graph tracer has
