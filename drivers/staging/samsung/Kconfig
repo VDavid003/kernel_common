@@ -63,11 +63,6 @@ config SEC_UPLOAD
 	help
 	  Samsung TN upload mode
 
-config SEC_FD_DETECT
-	bool "Detect a file descriptor invalid closer"
-	depends on SEC_DEBUG
-	default y
-
 config SEC_DEBUG_LAST_KMSG
 	bool "Write last_kmsg at /proc/last_kmsg"
 	depends on SEC_DEBUG
