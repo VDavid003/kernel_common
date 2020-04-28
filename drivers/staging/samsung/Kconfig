@@ -103,12 +103,6 @@ config SEC_INITCALL_DEBUG
 	depends on SEC_EXT && !SAMSUNG_PRODUCT_SHIP
 	default y
 
-config ARGOS
-	bool "Throughput monitoring Feature"
-	default n
-	help
-	  Check throughput and set appropriate system parameters(CPU freq, affinity, etc)
-
 config SEC_KWATCHER
 	bool "Enable kwatchder support" if EMBEDDED
 	depends on PERF_EVENTS

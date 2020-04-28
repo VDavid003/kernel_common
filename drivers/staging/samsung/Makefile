@@ -37,7 +37,6 @@ obj-$(CONFIG_SEC_DEBUG_GAF_V5)		+= sec_gaf_v5.o
 obj-$(CONFIG_SEC_PARAM)		+= sec_param.o
 obj-$(CONFIG_SEC_BOOTSTAT)	+= sec_bootstat.o
 obj-$(CONFIG_SEC_INITCALL_DEBUG)+= sec_initcall_debug.o
-obj-$(CONFIG_ARGOS)		+= sec_argos.o
 
 obj-$(CONFIG_SEC_MMIOTRACE)	+= sec_mmiotrace.o
 obj-$(CONFIG_SEC_KWATCHER)	+= sec_kwatcher.o sec_unit_test_core.o sec_kwatcher_ut_config.o sec_kwatcher_ut_hit.o sec_kwatcher_ut_compare.o
