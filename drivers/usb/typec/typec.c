@@ -805,6 +805,34 @@ static const char * const typec_port_types_drp[] = {
 	[TYPEC_PORT_DRP] = "[dual] source sink",
 };
 
+/**
+ * From sammy's lib/string.c
+ * __sysfs_match_string - matches given string in an array
+ * @array: array of strings
+ * @n: number of strings in the array or -1 for NULL terminated arrays
+ * @str: string to match with
+ *
+ * Returns index of @str in the @array or -EINVAL, just like match_string().
+ * Uses sysfs_streq instead of strcmp for matching.
+ */
+static int __sysfs_match_string(const char * const *array, size_t n, const char *str)
+{
+	const char *item;
+	int index;
+
+	for (index = 0; index < n; index++) {
+		item = array[index];
+		if (!item)
+			break;
+		if (sysfs_streq(item, str))
+			return index;
+	}
+
+	return -EINVAL;
+}
+
+#define sysfs_match_string(_a, _s) __sysfs_match_string(_a, ARRAY_SIZE(_a), _s)
+
 static ssize_t
 preferred_role_store(struct device *dev, struct device_attribute *attr,
 		     const char *buf, size_t size)
