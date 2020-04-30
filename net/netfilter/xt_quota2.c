@@ -30,15 +30,6 @@
 
 /* Format of the ULOG packets passed through netlink */
 typedef struct ulog_packet_msg {
-#ifdef CONFIG_NETFILTER_XT_MATCH_QUOTA2_LOG_32BIT
-	unsigned int mark;
-	int timestamp_sec;
-	int timestamp_usec;
-	unsigned int hook;
-	char indev_name[IFNAMSIZ];
-	char outdev_name[IFNAMSIZ];
-	unsigned int data_len;
-#else
 	unsigned long mark;
 	long timestamp_sec;
 	long timestamp_usec;
@@ -46,7 +37,6 @@ typedef struct ulog_packet_msg {
 	char indev_name[IFNAMSIZ];
 	char outdev_name[IFNAMSIZ];
 	size_t data_len;
-#endif
 	char prefix[ULOG_PREFIX_LEN];
 	unsigned char mac_len;
 	unsigned char mac[ULOG_MAC_LEN];
@@ -327,14 +317,7 @@ quota_mt2(const struct sk_buff *skb, struct xt_action_param *par)
 		if (!(q->flags & XT_QUOTA_NO_CHANGE)) {
 			e->quota += (q->flags & XT_QUOTA_PACKET) ? 1 : skb->len;
 		}
-		if (!e->quota) {
-			quota2_log(par->hooknum,
-				   skb,
-				   par->in,
-				   par->out,
-				   q->name);
-		} else
-			ret = true;
+		ret = true;
 	} else {
 		if (e->quota >= skb->len) {
 			if (!(q->flags & XT_QUOTA_NO_CHANGE))
