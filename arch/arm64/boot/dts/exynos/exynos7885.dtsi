@@ -341,9 +341,9 @@
 		clocks = <&clock GATE_DPU_DECON0>;
 
 		/* pinctrl */
-		pinctrl-names = "hw_te_on", "hw_te_off";
-		pinctrl-0 = <&decon_f_te_on>;
-		pinctrl-1 = <&decon_f_te_off>;
+//		pinctrl-names = "hw_te_on", "hw_te_off";
+//		pinctrl-0 = <&decon_f_te_on>;
+//		pinctrl-1 = <&decon_f_te_off>;
 
 		/* power domain */
 		samsung,power-domain = <&pd_dispaud>;
