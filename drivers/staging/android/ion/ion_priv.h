@@ -30,6 +30,14 @@
 
 #include "ion.h"
 
+struct ion_iovm_map {
+	struct list_head list;
+	unsigned int map_cnt;
+	struct device *dev;
+	struct iommu_domain *domain;
+	dma_addr_t iova;
+};
+
 /**
  * struct ion_buffer - metadata for a particular buffer
  * @ref:		reference count
@@ -74,6 +82,7 @@ struct ion_buffer {
 	struct sg_table *sg_table;
 	struct page **pages;
 	struct list_head vmas;
+	struct list_head iovas;
 	/* used to track orphaned buffers */
 	int handle_count;
 	char task_comm[TASK_COMM_LEN];
@@ -240,6 +249,8 @@ struct ion_heap {
 	struct task_struct *task;
 
 	int (*debug_show)(struct ion_heap *heap, struct seq_file *, void *);
+	atomic_long_t total_allocated;
+	atomic_long_t total_allocated_peak;
 };
 
 /**

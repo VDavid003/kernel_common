@@ -52,3 +52,11 @@ config ION_OF
 	  extensions
 
 	  If using Ion and devicetree, you should say Y here
+
+config ION_EXYNOS
+	tristate "Ion for Exynos"
+	depends on ARCH_EXYNOS && ION
+	select CMA
+	select DMA_CMA
+	help
+	  Choose this option if you wish to use ion on a Samsung Exynos.

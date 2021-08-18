@@ -19,7 +19,7 @@
 
 #include <linux/types.h>
 
-#include "../uapi/ion.h"
+#include <uapi/linux/ion.h>
 
 struct ion_handle;
 struct ion_device;
@@ -79,6 +79,12 @@ struct ion_platform_data {
  */
 struct ion_client *ion_client_create(struct ion_device *dev,
 				     const char *name);
+
+/**
+ * ion_client_create() -  allocate a client and returns it
+ * @name:		used for debugging
+ */
+struct ion_client *exynos_ion_client_create(const char *name);
 
 /**
  * ion_client_destroy() -  free's a client and all it's handles
@@ -172,5 +178,11 @@ struct ion_handle *ion_import_dma_buf(struct ion_client *client,
  * another exporter is passed in this function will return ERR_PTR(-EINVAL)
  */
 struct ion_handle *ion_import_dma_buf_fd(struct ion_client *client, int fd);
+
+#include <linux/dma-buf.h>
+
+dma_addr_t ion_iovmm_map(struct dma_buf_attachment *attachment,
+			 off_t offset, size_t size,
+			 enum dma_data_direction direction, int prop);
 
 #endif /* _LINUX_ION_H */

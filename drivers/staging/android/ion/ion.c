@@ -36,8 +36,13 @@
 #include <linux/debugfs.h>
 #include <linux/dma-buf.h>
 #include <linux/idr.h>
+#include <linux/exynos_iovmm.h>
+#include <linux/exynos_ion.h>
+#include <linux/highmem.h>
 
 #include "ion.h"
+
+#define CREATE_TRACE_POINTS
 #include "ion_priv.h"
 #include "compat_ion.h"
 
@@ -109,6 +114,7 @@ static struct ion_buffer *ion_buffer_create(struct ion_heap *heap,
 	struct sg_table *table;
 	struct scatterlist *sg;
 	int i, ret;
+	long nr_alloc_cur, nr_alloc_peak;
 
 	buffer = kzalloc(sizeof(*buffer), GFP_KERNEL);
 	if (!buffer)
@@ -163,6 +169,7 @@ static struct ion_buffer *ion_buffer_create(struct ion_heap *heap,
 	buffer->dev = dev;
 	buffer->size = len;
 	INIT_LIST_HEAD(&buffer->vmas);
+	INIT_LIST_HEAD(&buffer->iovas);
 	mutex_init(&buffer->lock);
 	/*
 	 * this will set up dma addresses for the sglist -- it is not
@@ -181,6 +188,10 @@ static struct ion_buffer *ion_buffer_create(struct ion_heap *heap,
 	mutex_lock(&dev->buffer_lock);
 	ion_buffer_add(dev, buffer);
 	mutex_unlock(&dev->buffer_lock);
+	nr_alloc_cur = atomic_long_add_return(len, &heap->total_allocated);
+	nr_alloc_peak = atomic_long_read(&heap->total_allocated_peak);
+	if (nr_alloc_cur > nr_alloc_peak)
+		atomic_long_set(&heap->total_allocated_peak, nr_alloc_cur);
 	return buffer;
 
 err1:
@@ -192,10 +203,23 @@ err2:
 
 void ion_buffer_destroy(struct ion_buffer *buffer)
 {
+	struct ion_iovm_map *iovm_map;
+	struct ion_iovm_map *tmp;
+
 	if (WARN_ON(buffer->kmap_cnt > 0))
 		buffer->heap->ops->unmap_kernel(buffer->heap, buffer);
+
+	list_for_each_entry_safe(iovm_map, tmp, &buffer->iovas, list) {
+		iovmm_unmap(iovm_map->dev, iovm_map->iova);
+		list_del(&iovm_map->list);
+		kfree(iovm_map);
+	}
+
+	atomic_long_sub(buffer->size, &buffer->heap->total_allocated);
+
 	buffer->heap->ops->free(buffer);
 	vfree(buffer->pages);
+
 	kfree(buffer);
 }
 
@@ -971,6 +995,33 @@ static void ion_dma_buf_release(struct dma_buf *dmabuf)
 	ion_buffer_put(buffer);
 }
 
+static void *ion_dma_buf_vmap(struct dma_buf *dmabuf)
+{
+	struct ion_buffer *buffer = dmabuf->priv;
+	void *vaddr;
+
+	if (!buffer->heap->ops->map_kernel) {
+		pr_err("%s: map kernel is not implemented by this heap.\n",
+		       __func__);
+		return ERR_PTR(-ENODEV);
+	}
+
+	mutex_lock(&buffer->lock);
+	vaddr = ion_buffer_kmap_get(buffer);
+	mutex_unlock(&buffer->lock);
+
+	return vaddr;
+}
+
+static void ion_dma_buf_vunmap(struct dma_buf *dmabuf, void *ptr)
+{
+	struct ion_buffer *buffer = dmabuf->priv;
+
+	mutex_lock(&buffer->lock);
+	ion_buffer_kmap_put(buffer);
+	mutex_unlock(&buffer->lock);
+}
+
 static void *ion_dma_buf_kmap(struct dma_buf *dmabuf, unsigned long offset)
 {
 	struct ion_buffer *buffer = dmabuf->priv;
@@ -1024,6 +1075,8 @@ static struct dma_buf_ops dma_buf_ops = {
 	.kunmap_atomic = ion_dma_buf_kunmap,
 	.kmap = ion_dma_buf_kmap,
 	.kunmap = ion_dma_buf_kunmap,
+	.vmap = ion_dma_buf_vmap,
+	.vunmap = ion_dma_buf_vunmap,
 };
 
 struct dma_buf *ion_share_dma_buf(struct ion_client *client,
@@ -1485,3 +1538,93 @@ void ion_device_destroy(struct ion_device *dev)
 	kfree(dev);
 }
 EXPORT_SYMBOL(ion_device_destroy);
+
+static struct ion_iovm_map *ion_buffer_iova_create(struct ion_buffer *buffer,
+		struct device *dev, enum dma_data_direction dir, int prop)
+{
+	/* Must be called under buffer->lock held */
+	struct ion_iovm_map *iovm_map;
+	int ret = 0;
+
+	iovm_map = kzalloc(sizeof(struct ion_iovm_map), GFP_KERNEL);
+	if (!iovm_map) {
+		pr_err("%s: Failed to allocate ion_iovm_map for %s\n",
+			__func__, dev_name(dev));
+		return ERR_PTR(-ENOMEM);
+	}
+
+	iovm_map->iova = iovmm_map(dev, buffer->sg_table->sgl,
+					0, buffer->size, dir, prop);
+
+	if (iovm_map->iova == (dma_addr_t)-ENOSYS) {
+		size_t len;
+		ion_phys_addr_t addr;
+
+		BUG_ON(!buffer->heap->ops->phys);
+		ret = buffer->heap->ops->phys(buffer->heap, buffer,
+						&addr, &len);
+		if (ret)
+			pr_err("%s: Unable to get PA for %s\n",
+					__func__, dev_name(dev));
+	} else if (IS_ERR_VALUE(iovm_map->iova)) {
+		ret = iovm_map->iova;
+		pr_err("%s: Unable to allocate IOVA for %s\n",
+			__func__, dev_name(dev));
+	}
+
+	if (ret) {
+		kfree(iovm_map);
+		return ERR_PTR(ret);
+	}
+
+	iovm_map->dev = dev;
+	iovm_map->domain = get_domain_from_dev(dev);
+	iovm_map->map_cnt = 1;
+
+	pr_debug("%s: new map added for dev %s, iova %pa, prop %d\n", __func__,
+		 dev_name(dev), &iovm_map->iova, prop);
+
+	return iovm_map;
+}
+
+dma_addr_t ion_iovmm_map(struct dma_buf_attachment *attachment,
+			 off_t offset, size_t size,
+			 enum dma_data_direction direction, int prop)
+{
+	struct dma_buf *dmabuf = attachment->dmabuf;
+	struct ion_buffer *buffer = dmabuf->priv;
+	struct ion_iovm_map *iovm_map;
+	struct iommu_domain *domain;
+
+	BUG_ON(dmabuf->ops != &dma_buf_ops);
+
+	domain = get_domain_from_dev(attachment->dev);
+	if (!domain) {
+		pr_err("%s: invalid iommu device\n", __func__);
+		return -EINVAL;
+	}
+
+	mutex_lock(&buffer->lock);
+	list_for_each_entry(iovm_map, &buffer->iovas, list) {
+		if (domain == iovm_map->domain) {
+			iovm_map->map_cnt++;
+			mutex_unlock(&buffer->lock);
+			return iovm_map->iova;
+		}
+	}
+
+	if (!ion_buffer_cached(buffer))
+		prop &= ~IOMMU_CACHE;
+
+	iovm_map = ion_buffer_iova_create(buffer, attachment->dev,
+					  direction, prop);
+	if (IS_ERR(iovm_map)) {
+		mutex_unlock(&buffer->lock);
+		return PTR_ERR(iovm_map);
+	}
+
+	list_add_tail(&iovm_map->list, &buffer->iovas);
+	mutex_unlock(&buffer->lock);
+
+	return iovm_map->iova;
+}
