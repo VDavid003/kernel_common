@@ -1556,17 +1556,7 @@ static struct ion_iovm_map *ion_buffer_iova_create(struct ion_buffer *buffer,
 	iovm_map->iova = iovmm_map(dev, buffer->sg_table->sgl,
 					0, buffer->size, dir, prop);
 
-	if (iovm_map->iova == (dma_addr_t)-ENOSYS) {
-		size_t len;
-		ion_phys_addr_t addr;
-
-		BUG_ON(!buffer->heap->ops->phys);
-		ret = buffer->heap->ops->phys(buffer->heap, buffer,
-						&addr, &len);
-		if (ret)
-			pr_err("%s: Unable to get PA for %s\n",
-					__func__, dev_name(dev));
-	} else if (IS_ERR_VALUE(iovm_map->iova)) {
+	if (IS_ERR_VALUE(iovm_map->iova)) {
 		ret = iovm_map->iova;
 		pr_err("%s: Unable to allocate IOVA for %s\n",
 			__func__, dev_name(dev));
